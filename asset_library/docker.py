@@ -14,9 +14,11 @@ from .compat import (
     QFont,
     QGridLayout,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -26,7 +28,11 @@ from .compat import (
     QWidget,
 )
 from .config import SettingsStore
-from .constants import DEFAULT_SETTINGS, NESTED_ROLE, SUPPORTED_EXTENSIONS
+from .constants import (
+    DEFAULT_SETTINGS,
+    INCLUDE_SUBFOLDERS_ROLE,
+    SUPPORTED_EXTENSIONS,
+)
 from .settings_dialog import AssetSettingsDialog
 from .thumbnail import make_thumbnail
 
@@ -38,7 +44,7 @@ class AssetLibraryDocker(QDockWidget):
         self.store = SettingsStore()
         self.settings = self.store.load()
         self.current_path = ""
-        self.current_nested = False
+        self.current_include_subfolders = False
         self._restoring_layout = False
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
@@ -84,9 +90,9 @@ class AssetLibraryDocker(QDockWidget):
         self.scroll = QScrollArea(self.asset_panel)
         self.scroll.setWidgetResizable(True)
         self.asset_host = QWidget(self.scroll)
-        self.asset_grid = QGridLayout(self.asset_host)
-        self.asset_grid.setContentsMargins(4, 4, 4, 4)
-        self.asset_grid.setSpacing(10)
+        self.asset_layout = QVBoxLayout(self.asset_host)
+        self.asset_layout.setContentsMargins(4, 4, 4, 4)
+        self.asset_layout.setSpacing(14)
         self.scroll.setWidget(self.asset_host)
         right_layout.addWidget(self.scroll, 1)
         self.splitter.addWidget(self.asset_panel)
@@ -114,7 +120,7 @@ class AssetLibraryDocker(QDockWidget):
         self.resize(width, height)
         font = QFont(self.font())
         font.setPointSize(
-            int(self.settings.get("font_size", DEFAULT_SETTINGS["font_size"]))
+            int(self.settings.get("ui_font_size", DEFAULT_SETTINGS["ui_font_size"]))
         )
         self.setFont(font)
         self._restore_splitter_sizes()
@@ -142,7 +148,10 @@ class AssetLibraryDocker(QDockWidget):
             item = QListWidgetItem(label)
             item.setToolTip(path)
             item.setData(Qt.UserRole, path)
-            item.setData(NESTED_ROLE, bool(entry.get("nested", False)))
+            item.setData(
+                INCLUDE_SUBFOLDERS_ROLE,
+                bool(entry.get("include_subfolders", entry.get("nested", False))),
+            )
             self.folder_list.addItem(item)
         if self.folder_list.count() > 0:
             self.folder_list.setCurrentRow(0)
@@ -151,7 +160,9 @@ class AssetLibraryDocker(QDockWidget):
 
     def _folder_changed(self, current, previous):
         self.current_path = current.data(Qt.UserRole) if current else ""
-        self.current_nested = bool(current.data(NESTED_ROLE)) if current else False
+        self.current_include_subfolders = (
+            bool(current.data(INCLUDE_SUBFOLDERS_ROLE)) if current else False
+        )
         self._refresh_assets()
 
     def _refresh_assets(self):
@@ -162,65 +173,118 @@ class AssetLibraryDocker(QDockWidget):
             self._clear_assets(f"Folder not found: {self.current_path}")
             return
 
-        files = []
         try:
-            iterator = self._iter_asset_files(self.current_path, self.current_nested)
-            files.extend(iterator)
+            if self.current_include_subfolders:
+                sections = self._collect_asset_sections(self.current_path)
+            else:
+                sections = [
+                    (
+                        self.current_path,
+                        list(self._iter_root_asset_files(self.current_path)),
+                    )
+                ]
+            self._populate_asset_sections(sections)
         except OSError as exc:
             self._clear_assets(str(exc))
-            return
 
-        files.sort(key=lambda value: os.path.relpath(value, self.current_path).lower())
-        self._populate_assets(files)
+    def _collect_asset_sections(self, root_path):
+        sections = [(root_path, list(self._iter_root_asset_files(root_path)))]
+        for folder, dirnames, filenames in os.walk(root_path):
+            dirnames.sort(key=str.lower)
+            if folder == root_path:
+                continue
+            files = [
+                os.path.join(folder, filename)
+                for filename in sorted(filenames, key=str.lower)
+                if filename.lower().endswith(SUPPORTED_EXTENSIONS)
+            ]
+            if files:
+                sections.append((os.path.basename(os.path.normpath(folder)), files))
+        return sections
 
-    def _iter_asset_files(self, root_path, nested):
-        if nested:
-            for folder, dirnames, filenames in os.walk(root_path):
-                dirnames.sort(key=str.lower)
-                for filename in sorted(filenames, key=str.lower):
-                    if filename.lower().endswith(SUPPORTED_EXTENSIONS):
-                        yield os.path.join(folder, filename)
-        else:
-            for entry in os.scandir(root_path):
-                if entry.is_file() and entry.name.lower().endswith(
-                    SUPPORTED_EXTENSIONS
-                ):
-                    yield entry.path
+    def _iter_root_asset_files(self, root_path):
+        for entry in os.scandir(root_path):
+            if entry.is_file() and entry.name.lower().endswith(SUPPORTED_EXTENSIONS):
+                yield entry.path
 
     def _clear_assets(self, message=""):
         self._remove_tiles()
         self.status_label.setText(message)
 
     def _remove_tiles(self):
-        while self.asset_grid.count():
-            item = self.asset_grid.takeAt(0)
+        while self.asset_layout.count():
+            item = self.asset_layout.takeAt(0)
             widget = item.widget()
+            layout = item.layout()
             if widget is not None:
                 widget.deleteLater()
+            elif layout is not None:
+                self._clear_layout(layout)
 
-    def _populate_assets(self, files):
+    def _clear_layout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            child_layout = item.layout()
+            if widget is not None:
+                widget.deleteLater()
+            elif child_layout is not None:
+                self._clear_layout(child_layout)
+
+    def _populate_asset_sections(self, sections):
         self._remove_tiles()
-        count = len(files)
+        count = sum(len(files) for _, files in sections)
         suffix = "" if count == 1 else "s"
         self.status_label.setText(f"{count} asset{suffix}")
         columns = max(1, int(self.settings.get("columns", DEFAULT_SETTINGS["columns"])))
         thumb_size = int(
             self.settings.get("thumbnail_size", DEFAULT_SETTINGS["thumbnail_size"])
         )
-        font_size = int(self.settings.get("font_size", DEFAULT_SETTINGS["font_size"]))
+        font_size = int(
+            self.settings.get(
+                "asset_name_font_size", DEFAULT_SETTINGS["asset_name_font_size"]
+            )
+        )
 
+        for title, files in sections:
+            if files:
+                self._add_asset_section(title, files, columns, thumb_size, font_size)
+        self.asset_layout.addStretch(1)
+
+    def _add_asset_section(self, title, files, columns, thumb_size, font_size):
+        title_label = QLabel(title, self.asset_host)
+        section_font = QFont(self.font())
+        section_font.setBold(True)
+        section_font.setPointSize(
+            int(
+                self.settings.get(
+                    "header_font_size", DEFAULT_SETTINGS["header_font_size"]
+                )
+            )
+        )
+        title_label.setFont(section_font)
+        title_label.setToolTip(title)
+        title_label.setWordWrap(True)
+        self.asset_layout.addWidget(title_label)
+
+        grid_host = QWidget(self.asset_host)
+        grid = QGridLayout(grid_host)
+        grid.setContentsMargins(0, 0, 0, 10)
+        grid.setSpacing(10)
         for index, path in enumerate(files):
             tile = AssetTile(
                 path,
                 make_thumbnail(path, thumb_size),
                 thumb_size,
                 font_size,
-                self.asset_host,
+                grid_host,
             )
-            tile.opened.connect(self._open_asset)
-            self.asset_grid.addWidget(tile, index // columns, index % columns)
-        self.asset_grid.setRowStretch((count + columns - 1) // columns, 1)
-        self.asset_grid.setColumnStretch(columns, 1)
+            tile.open_requested.connect(self._open_asset)
+            tile.rename_requested.connect(self._rename_asset)
+            tile.remove_requested.connect(self._remove_asset_file)
+            grid.addWidget(tile, index // columns, index % columns)
+        grid.setColumnStretch(columns, 1)
+        self.asset_layout.addWidget(grid_host)
 
     def _open_asset(self, path):
         if not Krita:
@@ -229,6 +293,52 @@ class AssetLibraryDocker(QDockWidget):
         document = app.openDocument(path)
         if document and app.activeWindow():
             app.activeWindow().addView(document)
+
+    def _rename_asset(self, path):
+        current_name = os.path.basename(path)
+        new_name, ok = QInputDialog.getText(
+            self, "Rename Asset", "New file name", text=current_name
+        )
+        if not ok:
+            return
+        new_name = new_name.strip()
+        if not new_name or new_name == current_name:
+            return
+        if os.path.basename(new_name) != new_name:
+            QMessageBox.warning(self, "Rename Asset", "File name cannot contain a path.")
+            return
+        root, ext = os.path.splitext(new_name)
+        if not ext:
+            new_name = root + os.path.splitext(current_name)[1]
+        target = os.path.join(os.path.dirname(path), new_name)
+        if os.path.exists(target):
+            QMessageBox.warning(
+                self, "Rename Asset", "A file with that name already exists."
+            )
+            return
+        try:
+            os.rename(path, target)
+        except OSError as exc:
+            QMessageBox.warning(self, "Rename Asset", str(exc))
+            return
+        self._refresh_assets()
+
+    def _remove_asset_file(self, path):
+        answer = QMessageBox.question(
+            self,
+            "Remove Asset",
+            f"Delete this file?\n{path}",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            os.remove(path)
+        except OSError as exc:
+            QMessageBox.warning(self, "Remove Asset", str(exc))
+            return
+        self._refresh_assets()
 
     def _open_settings(self):
         dialog = AssetSettingsDialog(self.settings, self)

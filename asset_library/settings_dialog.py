@@ -58,7 +58,9 @@ class AssetSettingsDialog(QDialog):
         layout.addLayout(path_header)
 
         self.path_table = QTableWidget(0, 3, tab)
-        self.path_table.setHorizontalHeaderLabels(["Alias", "Path", "NestFolder"])
+        self.path_table.setHorizontalHeaderLabels(
+            ["Alias", "Path", "IncludeSubFolder"]
+        )
         self.path_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.path_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.path_table.horizontalHeader().setSectionResizeMode(
@@ -80,16 +82,16 @@ class AssetSettingsDialog(QDialog):
         tab = QWidget(self)
         layout = QVBoxLayout(tab)
         form = QFormLayout()
-        self.width_spin = self._spin(240, 2400)
-        self.height_spin = self._spin(180, 1800)
         self.columns_spin = self._spin(1, 12)
         self.thumbnail_spin = self._spin(48, 512)
-        self.font_spin = self._spin(7, 32)
-        form.addRow("Docker width", self.width_spin)
-        form.addRow("Docker height", self.height_spin)
+        self.ui_font_spin = self._spin(7, 32)
+        self.header_font_spin = self._spin(7, 32)
+        self.asset_name_font_spin = self._spin(7, 32)
         form.addRow("Thumbnail columns", self.columns_spin)
         form.addRow("Thumbnail size", self.thumbnail_spin)
-        form.addRow("Font size", self.font_spin)
+        form.addRow("Folder/Button font size", self.ui_font_spin)
+        form.addRow("Header font size", self.header_font_spin)
+        form.addRow("Asset filename font size", self.asset_name_font_spin)
         layout.addLayout(form)
         layout.addStretch(1)
         return tab
@@ -102,14 +104,10 @@ class AssetSettingsDialog(QDialog):
     def _load_values(self):
         for item in self._settings.get("paths", []):
             self._append_path_row(
-                item.get("alias", ""), item.get("path", ""), item.get("nested", False)
+                item.get("alias", ""),
+                item.get("path", ""),
+                item.get("include_subfolders", item.get("nested", False)),
             )
-        self.width_spin.setValue(
-            int(self._settings.get("window_width", DEFAULT_SETTINGS["window_width"]))
-        )
-        self.height_spin.setValue(
-            int(self._settings.get("window_height", DEFAULT_SETTINGS["window_height"]))
-        )
         self.columns_spin.setValue(
             int(self._settings.get("columns", DEFAULT_SETTINGS["columns"]))
         )
@@ -118,14 +116,37 @@ class AssetSettingsDialog(QDialog):
                 self._settings.get("thumbnail_size", DEFAULT_SETTINGS["thumbnail_size"])
             )
         )
-        self.font_spin.setValue(
-            int(self._settings.get("font_size", DEFAULT_SETTINGS["font_size"]))
+        self.ui_font_spin.setValue(
+            int(self._settings.get("ui_font_size", DEFAULT_SETTINGS["ui_font_size"]))
+        )
+        self.header_font_spin.setValue(
+            int(
+                self._settings.get(
+                    "header_font_size",
+                    DEFAULT_SETTINGS["header_font_size"],
+                )
+            )
+        )
+        self.asset_name_font_spin.setValue(
+            int(
+                self._settings.get(
+                    "asset_name_font_size",
+                    DEFAULT_SETTINGS["asset_name_font_size"],
+                )
+            )
         )
 
-    def _append_path_row(self, alias, path, nested=False):
+    def _append_path_row(self, alias, path, include_subfolders=False):
         row = self.path_table.rowCount()
         self.path_table.insertRow(row)
-        self._set_path_row(row, {"alias": alias or "", "path": path or "", "nested": nested})
+        self._set_path_row(
+            row,
+            {
+                "alias": alias or "",
+                "path": path or "",
+                "include_subfolders": include_subfolders,
+            },
+        )
 
     def _add_path(self):
         path = QFileDialog.getExistingDirectory(self, "Select Asset Folder")
@@ -161,22 +182,24 @@ class AssetSettingsDialog(QDialog):
     def _path_row_values(self, row):
         alias_item = self.path_table.item(row, 0)
         path_item = self.path_table.item(row, 1)
-        nested_item = self.path_table.item(row, 2)
+        include_item = self.path_table.item(row, 2)
         return {
             "alias": alias_item.text() if alias_item else "",
             "path": path_item.text() if path_item else "",
-            "nested": nested_item.checkState() == Qt.Checked if nested_item else False,
+            "include_subfolders": (
+                include_item.checkState() == Qt.Checked if include_item else False
+            ),
         }
 
     def _set_path_row(self, row, data):
         self.path_table.setItem(row, 0, QTableWidgetItem(data.get("alias", "")))
         self.path_table.setItem(row, 1, QTableWidgetItem(data.get("path", "")))
-        nested_item = QTableWidgetItem()
-        nested_item.setFlags(nested_item.flags() | Qt.ItemIsUserCheckable)
-        nested_item.setCheckState(
-            Qt.Checked if data.get("nested", False) else Qt.Unchecked
+        include_item = QTableWidgetItem()
+        include_item.setFlags(include_item.flags() | Qt.ItemIsUserCheckable)
+        include_item.setCheckState(
+            Qt.Checked if data.get("include_subfolders", False) else Qt.Unchecked
         )
-        self.path_table.setItem(row, 2, nested_item)
+        self.path_table.setItem(row, 2, include_item)
 
     def values(self):
         paths = []
@@ -186,17 +209,21 @@ class AssetSettingsDialog(QDialog):
             path = row_data["path"].strip()
             if path:
                 paths.append(
-                    {"alias": alias, "path": path, "nested": row_data["nested"]}
+                    {
+                        "alias": alias,
+                        "path": path,
+                        "include_subfolders": row_data["include_subfolders"],
+                    }
                 )
         updated = dict(self._settings)
         updated.update(
             {
                 "paths": paths,
-                "window_width": self.width_spin.value(),
-                "window_height": self.height_spin.value(),
                 "columns": self.columns_spin.value(),
                 "thumbnail_size": self.thumbnail_spin.value(),
-                "font_size": self.font_spin.value(),
+                "ui_font_size": self.ui_font_spin.value(),
+                "header_font_size": self.header_font_spin.value(),
+                "asset_name_font_size": self.asset_name_font_spin.value(),
             }
         )
         return updated

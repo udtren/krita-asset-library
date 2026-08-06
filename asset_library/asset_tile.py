@@ -2,11 +2,13 @@
 
 import os
 
-from .compat import QFont, QFrame, QLabel, Qt, QVBoxLayout, pyqtSignal
+from .compat import QFont, QFrame, QLabel, QMenu, Qt, QVBoxLayout, pyqtSignal
 
 
 class AssetTile(QFrame):
-    opened = pyqtSignal(str)
+    open_requested = pyqtSignal(str)
+    rename_requested = pyqtSignal(str)
+    remove_requested = pyqtSignal(str)
 
     def __init__(self, file_path, pixmap, thumb_size, font_size, parent=None):
         super().__init__(parent)
@@ -28,7 +30,7 @@ class AssetTile(QFrame):
                 thumb_size, thumb_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
             )
         )
-        self.image.mouseDoubleClickEvent = self.mouseDoubleClickEvent
+        self.image.contextMenuEvent = self.contextMenuEvent
         layout.addWidget(self.image)
 
         self.name = QLabel(os.path.basename(file_path), self)
@@ -37,12 +39,19 @@ class AssetTile(QFrame):
         font = QFont(self.name.font())
         font.setPointSize(font_size)
         self.name.setFont(font)
-        self.name.mouseDoubleClickEvent = self.mouseDoubleClickEvent
+        self.name.contextMenuEvent = self.contextMenuEvent
         layout.addWidget(self.name)
 
-    def mouseDoubleClickEvent(self, event):
-        self.opened.emit(self.file_path)
-        try:
-            super().mouseDoubleClickEvent(event)
-        except AttributeError:
-            pass
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        open_action = menu.addAction("open")
+        rename_action = menu.addAction("rename")
+        remove_action = menu.addAction("remove")
+        exec_menu = menu.exec_ if hasattr(menu, "exec_") else menu.exec
+        selected = exec_menu(event.globalPos())
+        if selected == open_action:
+            self.open_requested.emit(self.file_path)
+        elif selected == rename_action:
+            self.rename_requested.emit(self.file_path)
+        elif selected == remove_action:
+            self.remove_requested.emit(self.file_path)

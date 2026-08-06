@@ -18,6 +18,8 @@ try:
         QLabel,
         QListWidget,
         QListWidgetItem,
+        QMenu,
+        QMessageBox,
         QPushButton,
         QScrollArea,
         QSpinBox,
@@ -49,6 +51,8 @@ except ImportError:
         QLabel,
         QListWidget,
         QListWidgetItem,
+        QMenu,
+        QMessageBox,
         QPushButton,
         QScrollArea,
         QSpinBox,
@@ -79,6 +83,9 @@ except ImportError:
 
     QDialogButtonBox.Ok = QDialogButtonBox.StandardButton.Ok
     QDialogButtonBox.Cancel = QDialogButtonBox.StandardButton.Cancel
+
+    QMessageBox.Yes = QMessageBox.StandardButton.Yes
+    QMessageBox.No = QMessageBox.StandardButton.No
 
     QHeaderView.Stretch = QHeaderView.ResizeMode.Stretch
     QHeaderView.ResizeToContents = QHeaderView.ResizeMode.ResizeToContents

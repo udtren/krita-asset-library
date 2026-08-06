@@ -3,7 +3,9 @@
 from .compat import PYQT6, Qt
 
 SUPPORTED_EXTENSIONS = (".kra", ".png", ".jpg", ".jpeg")
-NESTED_ROLE = Qt.UserRole + 1 if not PYQT6 else Qt.ItemDataRole(Qt.UserRole.value + 1)
+INCLUDE_SUBFOLDERS_ROLE = (
+    Qt.UserRole + 1 if not PYQT6 else Qt.ItemDataRole(Qt.UserRole.value + 1)
+)
 CONFIG_DIR_NAME = "krita_asset_library"
 CONFIG_FILE_NAME = "config.json"
 LEGACY_SETTINGS_GROUP = "asset_library"
@@ -19,5 +21,7 @@ DEFAULT_SETTINGS = {
     "collapsed_window_width": 170,
     "columns": 3,
     "thumbnail_size": 140,
-    "font_size": 10,
+    "ui_font_size": 10,
+    "header_font_size": 10,
+    "asset_name_font_size": 10,
 }
