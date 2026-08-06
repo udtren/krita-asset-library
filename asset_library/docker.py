@@ -1,6 +1,7 @@
 """Main Docker widget for Asset Library."""
 
 import os
+import shutil
 
 try:
     from krita import DockWidgetFactoryBase, Krita
@@ -170,6 +171,7 @@ class AssetLibraryDocker(QDockWidget):
         self._refresh_assets()
 
     def _refresh_assets(self):
+        self._layout_timer.stop()
         if not self.current_path:
             self._clear_assets("No asset path is selected.")
             return
@@ -228,9 +230,11 @@ class AssetLibraryDocker(QDockWidget):
             widget = item.widget()
             layout = item.layout()
             if widget is not None:
-                widget.deleteLater()
+                self._dispose_widget(widget)
             elif layout is not None:
                 self._clear_layout(layout)
+        self.asset_host.update()
+        self.scroll.viewport().update()
 
     def _clear_layout(self, layout):
         while layout.count():
@@ -238,12 +242,18 @@ class AssetLibraryDocker(QDockWidget):
             widget = item.widget()
             child_layout = item.layout()
             if widget is not None:
-                widget.deleteLater()
+                self._dispose_widget(widget)
             elif child_layout is not None:
                 self._clear_layout(child_layout)
 
+    def _dispose_widget(self, widget):
+        widget.hide()
+        widget.setParent(None)
+        widget.deleteLater()
+
     def _populate_asset_sections(self, sections):
         self._remove_tiles()
+        self.scroll.verticalScrollBar().setValue(0)
         count = sum(len(files) for _, files in sections)
         suffix = "" if count == 1 else "s"
         self.status_label.setText(f"{count} asset{suffix}")
@@ -301,6 +311,9 @@ class AssetLibraryDocker(QDockWidget):
                 grid_host,
             )
             tile.open_requested.connect(self._open_asset)
+            tile.insert_layer_requested.connect(self._insert_asset_as_layer)
+            tile.insert_file_layer_requested.connect(self._insert_asset_as_file_layer)
+            tile.duplicate_requested.connect(self._duplicate_asset_file)
             tile.rename_requested.connect(self._rename_asset)
             tile.remove_requested.connect(self._remove_asset_file)
             grid.addWidget(tile, index // columns, index % columns)
@@ -315,27 +328,88 @@ class AssetLibraryDocker(QDockWidget):
         if document and app.activeWindow():
             app.activeWindow().addView(document)
 
-    def _rename_asset(self, path):
-        current_name = os.path.basename(path)
-        new_name, ok = QInputDialog.getText(
-            self, "Rename Asset", "New file name", text=current_name
-        )
-        if not ok:
+    def _insert_asset_as_layer(self, path):
+        target_doc = self._active_document("Insert as New Layer")
+        if target_doc is None:
             return
-        new_name = new_name.strip()
-        if not new_name or new_name == current_name:
+        if not Krita:
             return
-        if os.path.basename(new_name) != new_name:
-            QMessageBox.warning(self, "Rename Asset", "File name cannot contain a path.")
+        source_doc = Krita.instance().openDocument(path)
+        if source_doc is None:
+            QMessageBox.warning(self, "Insert as New Layer", "Could not open asset file.")
             return
-        root, ext = os.path.splitext(new_name)
-        if not ext:
-            new_name = root + os.path.splitext(current_name)[1]
-        target = os.path.join(os.path.dirname(path), new_name)
-        if os.path.exists(target):
+        try:
+            source_doc.waitForDone()
+            width = min(source_doc.width(), target_doc.width())
+            height = min(source_doc.height(), target_doc.height())
+            if width <= 0 or height <= 0:
+                QMessageBox.warning(
+                    self, "Insert as New Layer", "Asset has no readable pixel area."
+                )
+                return
+            layer = target_doc.createNode(self._layer_name(path), "paintLayer")
+            if layer is None:
+                QMessageBox.warning(
+                    self, "Insert as New Layer", "Could not create paint layer."
+                )
+                return
+            pixel_data = source_doc.pixelData(0, 0, width, height)
+            if not layer.setPixelData(pixel_data, 0, 0, width, height):
+                QMessageBox.warning(
+                    self, "Insert as New Layer", "Could not write pixels to layer."
+                )
+                return
+            if not self._add_layer_to_active_document(target_doc, layer):
+                QMessageBox.warning(
+                    self, "Insert as New Layer", "Could not add layer to document."
+                )
+                return
+            target_doc.setActiveNode(layer)
+            target_doc.refreshProjection()
+        finally:
+            source_doc.close()
+
+    def _insert_asset_as_file_layer(self, path):
+        doc = self._active_document("Insert as New File Layer")
+        if doc is None:
+            return
+        layer = doc.createFileLayer(self._layer_name(path), os.path.abspath(path), "None")
+        if layer is None:
             QMessageBox.warning(
-                self, "Rename Asset", "A file with that name already exists."
+                self, "Insert as New File Layer", "Could not create file layer."
             )
+            return
+        if not self._add_layer_to_active_document(doc, layer):
+            QMessageBox.warning(
+                self, "Insert as New File Layer", "Could not add file layer."
+            )
+            return
+        doc.setActiveNode(layer)
+        doc.refreshProjection()
+
+    def _active_document(self, title):
+        if not Krita:
+            return None
+        doc = Krita.instance().activeDocument()
+        if doc is None:
+            QMessageBox.warning(self, title, "No active Krita document.")
+        return doc
+
+    def _add_layer_to_active_document(self, doc, layer):
+        root = doc.rootNode()
+        active_node = doc.activeNode()
+        above = active_node if active_node and active_node != root else None
+        parent = above.parentNode() if above else root
+        if parent is None:
+            parent = root
+        return bool(parent.addChildNode(layer, above))
+
+    def _layer_name(self, path):
+        return os.path.splitext(os.path.basename(path))[0]
+
+    def _rename_asset(self, path):
+        target = self._requested_asset_path(path, "Rename Asset", allow_current=True)
+        if target is None or target == path:
             return
         try:
             os.rename(path, target)
@@ -343,6 +417,41 @@ class AssetLibraryDocker(QDockWidget):
             QMessageBox.warning(self, "Rename Asset", str(exc))
             return
         self._refresh_assets()
+
+    def _duplicate_asset_file(self, path):
+        target = self._requested_asset_path(path, "Duplicate Asset")
+        if target is None or target == path:
+            return
+        try:
+            shutil.copy2(path, target)
+        except OSError as exc:
+            QMessageBox.warning(self, "Duplicate Asset", str(exc))
+            return
+        self._refresh_assets()
+
+    def _requested_asset_path(self, path, title, allow_current=False):
+        current_name = os.path.basename(path)
+        new_name, ok = QInputDialog.getText(
+            self, title, "New file name", text=current_name
+        )
+        if not ok:
+            return None
+        new_name = new_name.strip()
+        if not new_name:
+            return None
+        if os.path.basename(new_name) != new_name:
+            QMessageBox.warning(self, title, "File name cannot contain a path.")
+            return None
+        root, ext = os.path.splitext(new_name)
+        if not ext:
+            new_name = root + os.path.splitext(current_name)[1]
+        target = os.path.join(os.path.dirname(path), new_name)
+        if allow_current and os.path.normcase(target) == os.path.normcase(path):
+            return target
+        if os.path.exists(target):
+            QMessageBox.warning(self, title, "A file with that name already exists.")
+            return None
+        return target
 
     def _remove_asset_file(self, path):
         answer = QMessageBox.question(

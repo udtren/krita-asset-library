@@ -7,8 +7,11 @@ from .compat import QFont, QFrame, QLabel, QMenu, Qt, QVBoxLayout, pyqtSignal
 
 class AssetTile(QFrame):
     open_requested = pyqtSignal(str)
+    insert_layer_requested = pyqtSignal(str)
+    insert_file_layer_requested = pyqtSignal(str)
     rename_requested = pyqtSignal(str)
     remove_requested = pyqtSignal(str)
+    duplicate_requested = pyqtSignal(str)
 
     def __init__(self, file_path, pixmap, thumb_size, font_size, parent=None):
         super().__init__(parent)
@@ -44,13 +47,22 @@ class AssetTile(QFrame):
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
-        open_action = menu.addAction("open")
-        rename_action = menu.addAction("rename")
-        remove_action = menu.addAction("remove")
+        open_action = menu.addAction("Open")
+        insert_layer_action = menu.addAction("Insert as New Layer")
+        insert_file_layer_action = menu.addAction("Insert as New File Layer")
+        duplicate_action = menu.addAction("Duplicate")
+        rename_action = menu.addAction("Rename")
+        remove_action = menu.addAction("Remove")
         exec_menu = menu.exec_ if hasattr(menu, "exec_") else menu.exec
         selected = exec_menu(event.globalPos())
         if selected == open_action:
             self.open_requested.emit(self.file_path)
+        elif selected == insert_layer_action:
+            self.insert_layer_requested.emit(self.file_path)
+        elif selected == insert_file_layer_action:
+            self.insert_file_layer_requested.emit(self.file_path)
+        elif selected == duplicate_action:
+            self.duplicate_requested.emit(self.file_path)
         elif selected == rename_action:
             self.rename_requested.emit(self.file_path)
         elif selected == remove_action:
