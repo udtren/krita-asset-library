@@ -12,6 +12,9 @@ Krita Docker plugin for browsing asset folders and opening `.kra`, `.png`, `.jpg
 - Enable `IncludeSubFolder` per asset path to include files from child folders.
 - When subfolders are included, the right panel groups thumbnails by section. The root section uses the root folder name; subfolder sections use each subfolder name.
 - Displays thumbnails for PNG/JPG files and KRA previews when `preview.png` or `mergedimage.png` exists in the KRA archive.
+
+![Right Click Menu](images/2.png)
+
 - Right-click an asset thumbnail or filename to open the context menu: `Open`, `Insert as New Layer`, `Insert as New File Layer`, `Duplicate`, `Rename`, or `Remove`.
 - Left panel contains `Refresh`, `Settings`, and `Hide` / `Show` buttons.
 - `Hide` collapses the right asset thumbnail container and shrinks the Docker; `Show` restores it.
