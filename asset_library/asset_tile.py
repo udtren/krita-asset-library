@@ -52,7 +52,7 @@ class AssetTile(QFrame):
         insert_file_layer_action = menu.addAction("Insert as New File Layer")
         duplicate_action = menu.addAction("Duplicate")
         rename_action = menu.addAction("Rename")
-        remove_action = menu.addAction("Remove")
+        remove_action = menu.addAction("Delete")
         exec_menu = menu.exec_ if hasattr(menu, "exec_") else menu.exec
         selected = exec_menu(event.globalPos())
         if selected == open_action:

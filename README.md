@@ -15,7 +15,7 @@ Krita Docker plugin for browsing asset folders and opening `.kra`, `.png`, `.jpg
 
 ![Right Click Menu](images/2.png)
 
-- Right-click an asset thumbnail or filename to open the context menu: `Open`, `Insert as New Layer`, `Insert as New File Layer`, `Duplicate`, `Rename`, or `Remove`.
+- Right-click an asset thumbnail or filename to open the context menu: `Open`, `Insert as New Layer`, `Insert as New File Layer`, `Duplicate`, `Rename`, or `Delete`.
 - Left panel contains `Refresh`, `Settings`, and `Hide` / `Show` buttons.
 - `Hide` collapses the right asset thumbnail container and shrinks the Docker; `Show` restores it.
 - Display settings include `Auto columns`, fixed thumbnail columns, thumbnail size, folder/button font size, header font size, and asset filename font size.
