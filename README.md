@@ -2,7 +2,7 @@
 
 ![Asset Library screenshot](images/1.png)
 
-Krita Docker plugin for browsing asset folders and opening `.kra`, `.png`, `.jpg`, and `.jpeg` files as new Krita documents.
+Krita Docker plugin for browsing asset folders and opening `.kra`, `.png`, `.jpg`, and `.jpeg` files.
 
 ## Features
 
