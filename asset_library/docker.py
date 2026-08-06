@@ -45,10 +45,14 @@ class AssetLibraryDocker(QDockWidget):
         self.settings = self.store.load()
         self.current_path = ""
         self.current_include_subfolders = False
+        self._asset_sections = []
         self._restoring_layout = False
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
         self._save_timer.timeout.connect(self._save_runtime_settings)
+        self._layout_timer = QTimer(self)
+        self._layout_timer.setSingleShot(True)
+        self._layout_timer.timeout.connect(self._relayout_assets)
         self._build_ui()
         self._apply_settings()
         self._load_folders()
@@ -103,7 +107,7 @@ class AssetLibraryDocker(QDockWidget):
         self.refresh_button.clicked.connect(self._refresh_assets)
         self.settings_button.clicked.connect(self._open_settings)
         self.hide_button.clicked.connect(self._toggle_asset_panel)
-        self.splitter.splitterMoved.connect(self._queue_runtime_save)
+        self.splitter.splitterMoved.connect(self._splitter_moved)
         self.setWidget(root)
 
     def _apply_settings(self):
@@ -179,16 +183,19 @@ class AssetLibraryDocker(QDockWidget):
             else:
                 sections = [
                     (
-                        self.current_path,
+                        self._folder_header(self.current_path),
                         list(self._iter_root_asset_files(self.current_path)),
                     )
                 ]
+            self._asset_sections = sections
             self._populate_asset_sections(sections)
         except OSError as exc:
             self._clear_assets(str(exc))
 
     def _collect_asset_sections(self, root_path):
-        sections = [(root_path, list(self._iter_root_asset_files(root_path)))]
+        sections = [
+            (self._folder_header(root_path), list(self._iter_root_asset_files(root_path)))
+        ]
         for folder, dirnames, filenames in os.walk(root_path):
             dirnames.sort(key=str.lower)
             if folder == root_path:
@@ -202,12 +209,16 @@ class AssetLibraryDocker(QDockWidget):
                 sections.append((os.path.basename(os.path.normpath(folder)), files))
         return sections
 
+    def _folder_header(self, path):
+        return os.path.basename(os.path.normpath(path)) or path
+
     def _iter_root_asset_files(self, root_path):
         for entry in os.scandir(root_path):
             if entry.is_file() and entry.name.lower().endswith(SUPPORTED_EXTENSIONS):
                 yield entry.path
 
     def _clear_assets(self, message=""):
+        self._asset_sections = []
         self._remove_tiles()
         self.status_label.setText(message)
 
@@ -236,10 +247,10 @@ class AssetLibraryDocker(QDockWidget):
         count = sum(len(files) for _, files in sections)
         suffix = "" if count == 1 else "s"
         self.status_label.setText(f"{count} asset{suffix}")
-        columns = max(1, int(self.settings.get("columns", DEFAULT_SETTINGS["columns"])))
         thumb_size = int(
             self.settings.get("thumbnail_size", DEFAULT_SETTINGS["thumbnail_size"])
         )
+        columns = self._thumbnail_columns(thumb_size)
         font_size = int(
             self.settings.get(
                 "asset_name_font_size", DEFAULT_SETTINGS["asset_name_font_size"]
@@ -250,6 +261,16 @@ class AssetLibraryDocker(QDockWidget):
             if files:
                 self._add_asset_section(title, files, columns, thumb_size, font_size)
         self.asset_layout.addStretch(1)
+
+    def _thumbnail_columns(self, thumb_size):
+        if not self.settings.get("auto_columns", DEFAULT_SETTINGS["auto_columns"]):
+            return max(
+                1, int(self.settings.get("columns", DEFAULT_SETTINGS["columns"]))
+            )
+        tile_width = thumb_size + 24
+        spacing = 10
+        available_width = max(1, self.scroll.viewport().width() - 8)
+        return max(1, int((available_width + spacing) / (tile_width + spacing)))
 
     def _add_asset_section(self, title, files, columns, thumb_size, font_size):
         title_label = QLabel(title, self.asset_host)
@@ -387,9 +408,25 @@ class AssetLibraryDocker(QDockWidget):
         frame_margin = max(24, self.width() - self.splitter.width() + 12)
         return max(120, int(left_width + frame_margin))
 
+    def _splitter_moved(self, *_args):
+        self._queue_runtime_save()
+        self._queue_asset_relayout()
+
     def _queue_runtime_save(self):
         if not self._restoring_layout:
             self._save_timer.start(500)
+
+    def _queue_asset_relayout(self):
+        if (
+            self.settings.get("auto_columns", DEFAULT_SETTINGS["auto_columns"])
+            and self._asset_sections
+            and not self.asset_panel.isHidden()
+        ):
+            self._layout_timer.start(150)
+
+    def _relayout_assets(self):
+        if self._asset_sections and not self.asset_panel.isHidden():
+            self._populate_asset_sections(self._asset_sections)
 
     def _save_runtime_settings(self):
         size = self.size()
@@ -412,6 +449,7 @@ class AssetLibraryDocker(QDockWidget):
         except AttributeError:
             pass
         self._queue_runtime_save()
+        self._queue_asset_relayout()
 
     def closeEvent(self, event):
         self._save_runtime_settings()

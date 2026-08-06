@@ -79,6 +79,10 @@ class SettingsStore:
         ]
         data["splitter_sizes"] = self._valid_splitter_sizes(data.get("splitter_sizes"))
         data["right_panel_hidden"] = bool(data.get("right_panel_hidden", False))
+        data["auto_columns"] = bool(data.get("auto_columns", True))
+        data["columns"] = self._bounded_int(
+            data.get("columns"), DEFAULT_SETTINGS["columns"], 1, 12
+        )
         data["ui_font_size"] = self._font_size(
             data.get("ui_font_size", data.get("font_size")),
             DEFAULT_SETTINGS["ui_font_size"],
@@ -118,6 +122,15 @@ class SettingsStore:
             return max(80, int(value))
         except (TypeError, ValueError):
             return int(fallback)
+
+    def _bounded_int(self, value, fallback, minimum, maximum):
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return int(fallback)
+        if minimum <= number <= maximum:
+            return number
+        return int(fallback)
 
     def _font_size(self, value, fallback):
         try:

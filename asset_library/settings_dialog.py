@@ -2,6 +2,7 @@
 
 from .compat import (
     QAbstractItemView,
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -82,17 +83,20 @@ class AssetSettingsDialog(QDialog):
         tab = QWidget(self)
         layout = QVBoxLayout(tab)
         form = QFormLayout()
+        self.auto_columns_check = QCheckBox("Auto columns", tab)
         self.columns_spin = self._spin(1, 12)
         self.thumbnail_spin = self._spin(48, 512)
         self.ui_font_spin = self._spin(7, 32)
         self.header_font_spin = self._spin(7, 32)
         self.asset_name_font_spin = self._spin(7, 32)
-        form.addRow("Thumbnail columns", self.columns_spin)
+        form.addRow("Thumbnail columns", self.auto_columns_check)
+        form.addRow("Fixed thumbnail columns", self.columns_spin)
         form.addRow("Thumbnail size", self.thumbnail_spin)
         form.addRow("Folder/Button font size", self.ui_font_spin)
         form.addRow("Header font size", self.header_font_spin)
         form.addRow("Asset filename font size", self.asset_name_font_spin)
         layout.addLayout(form)
+        self.auto_columns_check.toggled.connect(self.columns_spin.setDisabled)
         layout.addStretch(1)
         return tab
 
@@ -108,9 +112,13 @@ class AssetSettingsDialog(QDialog):
                 item.get("path", ""),
                 item.get("include_subfolders", item.get("nested", False)),
             )
+        self.auto_columns_check.setChecked(
+            bool(self._settings.get("auto_columns", DEFAULT_SETTINGS["auto_columns"]))
+        )
         self.columns_spin.setValue(
             int(self._settings.get("columns", DEFAULT_SETTINGS["columns"]))
         )
+        self.columns_spin.setDisabled(self.auto_columns_check.isChecked())
         self.thumbnail_spin.setValue(
             int(
                 self._settings.get("thumbnail_size", DEFAULT_SETTINGS["thumbnail_size"])
@@ -219,6 +227,7 @@ class AssetSettingsDialog(QDialog):
         updated.update(
             {
                 "paths": paths,
+                "auto_columns": self.auto_columns_check.isChecked(),
                 "columns": self.columns_spin.value(),
                 "thumbnail_size": self.thumbnail_spin.value(),
                 "ui_font_size": self.ui_font_spin.value(),

@@ -5,6 +5,7 @@ try:
     from PyQt5.QtGui import QColor, QFont, QPainter, QPixmap
     from PyQt5.QtWidgets import (
         QAbstractItemView,
+        QCheckBox,
         QDialog,
         QDialogButtonBox,
         QDockWidget,
@@ -38,6 +39,7 @@ except ImportError:
     from PyQt6.QtGui import QColor, QFont, QPainter, QPixmap
     from PyQt6.QtWidgets import (
         QAbstractItemView,
+        QCheckBox,
         QDialog,
         QDialogButtonBox,
         QDockWidget,

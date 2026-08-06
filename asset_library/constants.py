@@ -19,6 +19,7 @@ DEFAULT_SETTINGS = {
     "right_panel_hidden": False,
     "expanded_window_width": 720,
     "collapsed_window_width": 170,
+    "auto_columns": True,
     "columns": 3,
     "thumbnail_size": 140,
     "ui_font_size": 10,
