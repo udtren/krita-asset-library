@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=Krita/PythonPlugin
+X-KDE-Library=asset_library
+X-Python-2-Compatible=false
+Name=Asset Library
+Comment=Browse configured asset folders and open KRA/PNG/JPG files as new Krita documents
